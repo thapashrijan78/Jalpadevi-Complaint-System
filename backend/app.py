@@ -3,6 +3,8 @@ from flask_cors import CORS
 from pathlib import Path
 from datetime import datetime, timezone
 import json, uuid, base64
+import smtplib
+from email.message import EmailMessage
 
 BASE = Path(__file__).resolve().parent
 DATA = BASE / "data.json"
@@ -19,6 +21,22 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 TOKEN = "jalpa-demo-admin-token"
 
+#Email configuration#
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+
+# Replace this  with the Gmail address that owns the App Password
+SENDER_EMAIL = "exaplehai@gmail.com"  
+
+# Esma App Password
+SENDER_PASSWORD = "qqqq qqqq qqqq qqqq"  # <-- here keep you app password generated from your Gmail account
+
+# Admins email who will receive the notification 
+ADMIN_EMAILS = [
+    "hemrajpanditjee@gmail.com",    #admin 1
+    "karkipadam948@gmail.com@gmail.com"  #admin2
+]
+
 def load_data():
     return json.loads(DATA.read_text(encoding="utf-8"))
 
@@ -27,6 +45,36 @@ def save_data(data):
 
 def authorized():
     return request.headers.get("Authorization") == f"Bearer {TOKEN}"
+
+#  Email notification function #
+def send_admin_notification(complaint):
+    msg = EmailMessage()
+    msg['Subject'] = f"नयाँ गुनासो दर्ता भयो: {complaint['id']}"
+    msg['From'] = SENDER_EMAIL
+    msg['To'] = ", ".join(ADMIN_EMAILS)
+    
+    body = f"""
+    नयाँ गुनासो प्राप्त भएको छ।
+    
+    दर्ता नम्बर: {complaint['id']}
+    भूमिका: {complaint['role']}
+    विषय: {complaint['category']}
+    शीर्षक: {complaint['title']}
+    विवरण: {complaint['description']}
+    
+    कृपया व्यवस्थापन गर्न प्रशासन ड्यासबोर्डमा लगइन गर्नुहोस्।
+    """
+    msg.set_content(body)
+    
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
+        print(f"Email sent successfully to admins for complaint {complaint['id']}")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+# ==========================================
 
 @app.get("/api/health")
 def health():
@@ -97,6 +145,11 @@ def create_complaint():
     data = load_data()
     data["complaints"].insert(0, c)
     save_data(data)
+    
+    # --- SEND EMAIL TO ADMINS ---
+    send_admin_notification(c)
+    # ----------------------------
+    
     return {"ok": True, "complaint": c}, 201
 
 @app.get("/api/complaints")

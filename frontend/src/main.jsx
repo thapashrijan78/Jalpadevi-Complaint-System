@@ -15,6 +15,7 @@ Mic,
 MicOff,
 Paperclip,
 QrCode,
+RefreshCw,
 Search,
 Send,
 ShieldCheck,
@@ -1186,8 +1187,12 @@ const [items, setItems] = useState([]);
 const [loading, setLoading] = useState(true);
 const [filter, setFilter] = useState("सबै");
 const [query, setQuery] = useState("");
+const [error, setError] = useState("");
 
 const load = async () => {
+
+setLoading(true);
+setError("");
 
 try {
 
@@ -1211,6 +1216,10 @@ try {
 
   }
 
+  if (!r.ok) {
+    throw Error("गुनासाहरू लोड गर्न सकिएन।");
+  }
+
   const d = await r.json();
 
   setItems(d.complaints || []);
@@ -1218,6 +1227,7 @@ try {
 } catch {
 
   setItems([]);
+  setError("सर्भरसँग सम्पर्क हुन सकेन। फेरि प्रयास गर्नुहोस्।");
 
 } finally {
 
@@ -1248,7 +1258,7 @@ c.role
 
 const change = async (id, status) => {
 
-await fetch(
+const r = await fetch(
   API + "/complaints/" + id,
   {
     method: "PATCH",
@@ -1267,7 +1277,34 @@ await fetch(
   }
 );
 
+if (!r.ok) {
+  setError("गुनासोको अवस्था परिवर्तन गर्न सकिएन।");
+  return;
+}
+
 load();
+
+};
+
+const saveNote = async (id, admin_note) => {
+
+const r = await fetch(
+  API + "/complaints/" + id,
+  {
+    method: "PATCH",
+    headers: {
+      Authorization:
+        "Bearer " +
+        sessionStorage.getItem("adminToken"),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ admin_note })
+  }
+);
+
+if (!r.ok) {
+  setError("प्रशासनिक टिप्पणी सुरक्षित गर्न सकिएन।");
+}
 
 };
 
@@ -1298,20 +1335,37 @@ return ( <main>
 
     </div>
 
-    <button
-      className="outline"
-      onClick={() => {
+    <div className="dash-actions">
+      <button
+        className="outline"
+        onClick={load}
+      >
+        <RefreshCw size={16} />
+        पुनः लोड
+      </button>
+
+      <button
+        className="outline"
+        onClick={() => {
         sessionStorage.removeItem(
           "adminToken"
         );
 
         go("#login");
-      }}
-    >
-      लगआउट
-    </button>
+        }}
+      >
+        लगआउट
+      </button>
+    </div>
 
   </section>
+
+  {error && (
+    <div className="dashboard-error">
+      <AlertCircle size={18} />
+      {error}
+    </div>
+  )}
 
   <section className="stats">
 
@@ -1466,6 +1520,12 @@ return ( <main>
               : "पहिचान खुलाइएको"}
           </span>
 
+          {!c.anonymous && (c.name || c.contact) && (
+            <span>
+              {c.name || "नाम छैन"} · {c.contact || "सम्पर्क छैन"}
+            </span>
+          )}
+
           <span>
             {new Date(
               c.created_at
@@ -1497,6 +1557,18 @@ return ( <main>
             संलग्न फाइल हेर्नुहोस्
           </a>
         )}
+
+        <label className="admin-note">
+          प्रशासनिक टिप्पणी
+          <textarea
+            defaultValue={c.admin_note || ""}
+            placeholder="यस गुनासोबारे आन्तरिक टिप्पणी लेख्नुहोस्..."
+            rows="2"
+            onBlur={(e) =>
+              saveNote(c.id, e.target.value)
+            }
+          />
+        </label>
 
       </article>
 
@@ -1572,8 +1644,11 @@ return ( <main>
       </p>
 
       <label className="field">
+        const [error, setError] = useState("");
 
         सार्वजनिक गुनासो URL
+          setLoading(true);
+          setError("");
 
         <input
           value={url}
@@ -1598,6 +1673,7 @@ return ( <main>
         </a>
       )}
 
+            setError("सर्भरसँग सम्पर्क हुन सकेन। फेरि प्रयास गर्नुहोस्।");
     </div>
 
     <div className="qr-card">
@@ -1642,7 +1718,7 @@ return ( <footer>
     <div>
 
       <b>
-        श्री जाल्पादेवी माध्यमिक विद्यालय
+          श्री जाल्पादेवी माध्यमिक विद्यालय
       </b>
 
       <span>

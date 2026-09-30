@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+env/
+.env
+
+# Node.js
+node_modules/
+dist/
+.vite/
+
+# Database & Uploads (Optional - uncomment if you don't want to upload user data)
+# backend/data.json
+# backend/uploads/
+
+# OS Files
+.DS_Store
+Thumbs.db
