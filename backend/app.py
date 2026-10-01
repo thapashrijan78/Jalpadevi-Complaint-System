@@ -15,7 +15,10 @@ from email.message import EmailMessage
 # ============================================================
 
 BASE = Path(__file__).resolve().parent
-FRONTEND_DIST = BASE.parent / "frontend" / "dist"
+# PythonAnywhere installs the committed production build under backend/static.
+# Local/other deployments can continue to use frontend/dist.
+STATIC_BUILD = BASE / "static"
+FRONTEND_DIST = STATIC_BUILD if (STATIC_BUILD / "index.html").is_file() else BASE.parent / "frontend" / "dist"
 STORAGE = Path(os.environ.get("STORAGE_DIR", str(BASE))).resolve()
 STORAGE.mkdir(parents=True, exist_ok=True)
 
