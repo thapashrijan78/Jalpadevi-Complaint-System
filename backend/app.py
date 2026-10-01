@@ -2,192 +2,697 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from pathlib import Path
 from datetime import datetime, timezone
-import json, uuid, base64
+import json
+import uuid
+import base64
 import smtplib
 from email.message import EmailMessage
 
+# ============================================================
+# PATHS
+# ============================================================
+
 BASE = Path(__file__).resolve().parent
+
 DATA = BASE / "data.json"
 UPLOADS = BASE / "uploads"
+
 UPLOADS.mkdir(exist_ok=True)
 
+# Create data.json if it does not exist
 if not DATA.exists():
-    DATA.write_text(json.dumps({"complaints": []}, ensure_ascii=False, indent=2), encoding="utf-8")
+    DATA.write_text(
+        json.dumps(
+            {"complaints": []},
+            ensure_ascii=False,
+            indent=2
+        ),
+        encoding="utf-8"
+    )
+
+
+# ============================================================
+# FLASK APP
+# ============================================================
 
 app = Flask(__name__)
-CORS(app)
 
-ADMIN_USER = "admin"
-ADMIN_PASS = "admin123"
-TOKEN = "jalpa-demo-admin-token"
+CORS(
+    app,
+    resources={r"/api/*": {"origins": "*"}},
+    supports_credentials=False
+)
 
-#Email configuration#
+
+# ============================================================
+# ADMIN CONFIGURATION
+# ============================================================
+
+ADMIN_PASSWORD = "admin123"
+
+ADMIN_EMAILS = {
+    "hemrajpanditjee@gmail.com",
+    "karkipadam948@gmail.com",
+}
+
+# This token is returned after successful login.
+# The frontend uses it for protected admin requests.
+ADMIN_TOKEN = "jalpa-demo-admin-token"
+
+
+# ============================================================
+# EMAIL CONFIGURATION
+# ============================================================
+
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
-# Replace this  with the Gmail address that owns the App Password
-SENDER_EMAIL = "exaplehai@gmail.com"  
+# IMPORTANT:
+# Replace these with your actual Gmail address and Gmail App Password.
+#
+# Do NOT commit a real password/App Password to GitHub.
+#
+SENDER_EMAIL = "example@gmail.com"
+SENDER_PASSWORD = "xxxx xxxx xxxx xxxx"
 
-# Esma App Password
-SENDER_PASSWORD = "qqqq qqqq qqqq qqqq"  # <-- here keep you app password generated from your Gmail account
-
-# Admins email who will receive the notification 
-ADMIN_EMAILS = [
-    "hemrajpanditjee@gmail.com",    #admin 1
-    "karkipadam948@gmail.com@gmail.com"  #admin2
+# Emails that receive new complaint notifications
+NOTIFICATION_EMAILS = [
+    "hemrajpanditjee@gmail.com",
+    "karkipadam948@gmail.com",
 ]
 
+
+# ============================================================
+# DATA HELPERS
+# ============================================================
+
 def load_data():
-    return json.loads(DATA.read_text(encoding="utf-8"))
+    try:
+        return json.loads(
+            DATA.read_text(encoding="utf-8")
+        )
+    except Exception:
+        return {"complaints": []}
+
 
 def save_data(data):
-    DATA.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    DATA.write_text(
+        json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=2
+        ),
+        encoding="utf-8"
+    )
+
+
+# ============================================================
+# AUTHENTICATION
+# ============================================================
 
 def authorized():
-    return request.headers.get("Authorization") == f"Bearer {TOKEN}"
-
-#  Email notification function #
-def send_admin_notification(complaint):
-    msg = EmailMessage()
-    msg['Subject'] = f"नयाँ गुनासो दर्ता भयो: {complaint['id']}"
-    msg['From'] = SENDER_EMAIL
-    msg['To'] = ", ".join(ADMIN_EMAILS)
-    
-    body = f"""
-    नयाँ गुनासो प्राप्त भएको छ।
-    
-    दर्ता नम्बर: {complaint['id']}
-    भूमिका: {complaint['role']}
-    विषय: {complaint['category']}
-    शीर्षक: {complaint['title']}
-    विवरण: {complaint['description']}
-    
-    कृपया व्यवस्थापन गर्न प्रशासन ड्यासबोर्डमा लगइन गर्नुहोस्।
     """
-    msg.set_content(body)
-    
+    Check whether the request contains the admin token.
+    """
+
+    authorization = request.headers.get("Authorization", "")
+
+    expected = f"Bearer {ADMIN_TOKEN}"
+
+    return authorization == expected
+
+
+# ============================================================
+# EMAIL NOTIFICATION
+# ============================================================
+
+def send_admin_notification(complaint):
+    """
+    Send an email notification when a new complaint is created.
+
+    If email configuration is not valid, the complaint itself
+    is still saved successfully.
+    """
+
+    # Don't attempt SMTP with placeholder credentials.
+    if (
+        not SENDER_EMAIL
+        or not SENDER_PASSWORD
+        or SENDER_EMAIL == "example@gmail.com"
+        or SENDER_PASSWORD == "xxxx xxxx xxxx xxxx"
+    ):
+        print(
+            "Email notification skipped: "
+            "SMTP credentials are not configured."
+        )
+        return
+
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        msg = EmailMessage()
+
+        msg["Subject"] = (
+            f"नयाँ गुनासो दर्ता भयो: {complaint['id']}"
+        )
+
+        msg["From"] = SENDER_EMAIL
+
+        msg["To"] = ", ".join(NOTIFICATION_EMAILS)
+
+        body = f"""
+नयाँ गुनासो प्राप्त भएको छ।
+
+दर्ता नम्बर: {complaint['id']}
+भूमिका: {complaint['role']}
+विषय: {complaint['category']}
+शीर्षक: {complaint['title']}
+
+विवरण:
+{complaint['description']}
+
+स्थान:
+{complaint.get('location', '')}
+
+कृपया व्यवस्थापन गर्न प्रशासन ड्यासबोर्डमा लगइन गर्नुहोस्।
+"""
+
+        msg.set_content(body)
+
+        with smtplib.SMTP(
+            SMTP_SERVER,
+            SMTP_PORT
+        ) as server:
+
             server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+
+            server.login(
+                SENDER_EMAIL,
+                SENDER_PASSWORD
+            )
+
             server.send_message(msg)
-        print(f"Email sent successfully to admins for complaint {complaint['id']}")
+
+        print(
+            f"Email sent successfully for complaint "
+            f"{complaint['id']}"
+        )
+
     except Exception as e:
-        print(f"Failed to send email: {e}")
-# ==========================================
+        print(
+            f"Failed to send email notification: {e}"
+        )
+
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "message": "सर्भर चलिरहेको छ।"}
+    return jsonify({
+        "ok": True,
+        "message": "सर्भर चलिरहेको छ।"
+    })
 
-@app.post("/api/login")
+
+# ============================================================
+# ADMIN LOGIN
+# ============================================================
+
+@app.post("/api/auth/login")
 def login():
+
     body = request.get_json(silent=True) or {}
-    if body.get("username") == ADMIN_USER and body.get("password") == ADMIN_PASS:
-        return {"ok": True, "token": TOKEN}
-    return {"ok": False, "message": "प्रयोगकर्ता नाम वा पासवर्ड मिलेन।"}, 401
+
+    email = str(
+        body.get("email", "")
+    ).strip().lower()
+
+    username = str(
+        body.get("username", "")
+    ).strip().lower()
+
+    password = str(
+        body.get("password", "")
+    )
+
+    # --------------------------------------------------------
+    # Email-based login
+    # --------------------------------------------------------
+
+    valid_email = (
+        email in ADMIN_EMAILS
+    )
+
+    # --------------------------------------------------------
+    # Backward compatibility:
+    # allow username "admin"
+    # --------------------------------------------------------
+
+    valid_username = (
+        username == "admin"
+    )
+
+    # --------------------------------------------------------
+    # Password
+    # --------------------------------------------------------
+
+    valid_password = (
+        password == ADMIN_PASSWORD
+    )
+
+    if (valid_email or valid_username) and valid_password:
+
+        logged_in_email = (
+            email
+            if email in ADMIN_EMAILS
+            else "admin"
+        )
+
+        return jsonify({
+            "ok": True,
+            "token": ADMIN_TOKEN,
+            "email": logged_in_email
+        })
+
+    return jsonify({
+        "ok": False,
+        "message": "इमेल/प्रयोगकर्ता नाम वा पासवर्ड मिलेन।"
+    }), 401
+
+
+# ============================================================
+# CREATE COMPLAINT
+# ============================================================
 
 @app.post("/api/complaints")
 def create_complaint():
+
     body = request.get_json(silent=True) or {}
-    required = ["role", "category", "title", "description"]
-    missing = [x for x in required if not body.get(x)]
+
+    required = [
+        "role",
+        "category",
+        "title",
+        "description"
+    ]
+
+    missing = [
+        field
+        for field in required
+        if not body.get(field)
+    ]
+
     if missing:
-        return {"message": "कृपया आवश्यक विवरण पूरा गर्नुहोस्।"}, 400
+        return jsonify({
+            "message": "कृपया आवश्यक विवरण पूरा गर्नुहोस्।",
+            "missing": missing
+        }), 400
 
-    cid = "गु-" + datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
-    now = datetime.now(timezone.utc).isoformat()
+    # --------------------------------------------------------
+    # Complaint ID
+    # --------------------------------------------------------
 
-    c = {
+    cid = (
+        "गु-"
+        + datetime.now().strftime("%Y%m%d")
+        + "-"
+        + uuid.uuid4().hex[:6].upper()
+    )
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    anonymous = bool(
+        body.get("anonymous")
+    )
+
+    # --------------------------------------------------------
+    # Complaint object
+    # --------------------------------------------------------
+
+    complaint = {
         "id": cid,
+
         "created_at": now,
-        "role": body.get("role"),
-        "category": body.get("category"),
-        "title": body.get("title"),
-        "description": body.get("description"),
-        "name": "" if body.get("anonymous") else body.get("name", ""),
-        "contact": "" if body.get("anonymous") else body.get("contact", ""),
-        "email": "" if body.get("anonymous") else body.get("email", ""),
-        "location": body.get("location", ""),
-        "anonymous": bool(body.get("anonymous")),
+
+        "role": body.get("role", ""),
+
+        "category": body.get("category", ""),
+
+        "title": str(
+            body.get("title", "")
+        ).strip(),
+
+        "description": str(
+            body.get("description", "")
+        ).strip(),
+
+        "name": (
+            ""
+            if anonymous
+            else body.get("name", "")
+        ),
+
+        "contact": (
+            ""
+            if anonymous
+            else body.get("contact", "")
+        ),
+
+        "email": (
+            ""
+            if anonymous
+            else body.get("email", "")
+        ),
+
+        "location": body.get(
+            "location",
+            ""
+        ),
+
+        "anonymous": anonymous,
+
         "image_name": "",
+
+        "attachment_name": "",
+
         "voice_name": "",
-        "status": "दर्ता भयो",
+
+        "status": "opened",
+
         "admin_note": ""
     }
 
-    # Image/PDF attachment
-    attachment = body.get("attachment")
+
+    # ========================================================
+    # FILE ATTACHMENT
+    # ========================================================
+
+    attachment = body.get(
+        "attachment"
+    )
+
     if attachment and "," in attachment:
+
         try:
-            ext = body.get("attachment_ext", ".jpg").lower()
-            if ext not in [".jpg", ".jpeg", ".png", ".pdf"]:
+
+            ext = str(
+                body.get(
+                    "attachment_ext",
+                    ".jpg"
+                )
+            ).lower()
+
+            allowed_extensions = [
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".pdf"
+            ]
+
+            if ext not in allowed_extensions:
                 ext = ".jpg"
-            raw = base64.b64decode(attachment.split(",", 1)[1])
+
+            encoded_data = attachment.split(
+                ",",
+                1
+            )[1]
+
+            raw = base64.b64decode(
+                encoded_data
+            )
+
             if len(raw) <= 10 * 1024 * 1024:
-                path = UPLOADS / f"{cid}-file{ext}"
+
+                filename = (
+                    f"{cid}-file{ext}"
+                )
+
+                path = UPLOADS / filename
+
                 path.write_bytes(raw)
-                c["image_name"] = path.name
-        except Exception:
-            pass
+
+                complaint["image_name"] = filename
+
+                complaint["attachment_name"] = filename
+
+        except Exception as e:
+
+            print(
+                f"Attachment processing failed: {e}"
+            )
+
+
+    # ========================================================
+    # VOICE ATTACHMENT
+    # ========================================================
 
     voice = body.get("voice")
+
     if voice and "," in voice:
+
         try:
-            raw = base64.b64decode(voice.split(",", 1)[1])
+
+            encoded_data = voice.split(
+                ",",
+                1
+            )[1]
+
+            raw = base64.b64decode(
+                encoded_data
+            )
+
             if len(raw) <= 15 * 1024 * 1024:
-                path = UPLOADS / f"{cid}-voice.webm"
+
+                filename = (
+                    f"{cid}-voice.webm"
+                )
+
+                path = UPLOADS / filename
+
                 path.write_bytes(raw)
-                c["voice_name"] = path.name
-        except Exception:
-            pass
+
+                complaint["voice_name"] = filename
+
+        except Exception as e:
+
+            print(
+                f"Voice processing failed: {e}"
+            )
+
+
+    # ========================================================
+    # SAVE COMPLAINT
+    # ========================================================
 
     data = load_data()
-    data["complaints"].insert(0, c)
+
+    if "complaints" not in data:
+        data["complaints"] = []
+
+    data["complaints"].insert(
+        0,
+        complaint
+    )
+
     save_data(data)
-    
-    # --- SEND EMAIL TO ADMINS ---
-    send_admin_notification(c)
-    # ----------------------------
-    
-    return {"ok": True, "complaint": c}, 201
+
+
+    # ========================================================
+    # SEND EMAIL
+    # ========================================================
+
+    send_admin_notification(
+        complaint
+    )
+
+
+    # ========================================================
+    # RESPONSE
+    # ========================================================
+
+    return jsonify({
+        "ok": True,
+        "complaint": complaint
+    }), 201
+
+
+# ============================================================
+# GET ALL COMPLAINTS
+# ============================================================
 
 @app.get("/api/complaints")
 def get_complaints():
+
     if not authorized():
-        return {"message": "अनधिकृत पहुँच।"}, 401
-    return {"complaints": load_data()["complaints"]}
+
+        return jsonify({
+            "message": "अनधिकृत पहुँच।"
+        }), 401
+
+    data = load_data()
+
+    return jsonify({
+        "complaints": data.get(
+            "complaints",
+            []
+        )
+    })
+
+
+# ============================================================
+# GET SINGLE COMPLAINT
+# ============================================================
 
 @app.get("/api/complaints/<cid>")
 def get_one(cid):
-    for c in load_data()["complaints"]:
-        if c["id"] == cid:
-            public = dict(c)
-            public.pop("name", None)
-            public.pop("contact", None)
-            public.pop("email", None)
-            return {"complaint": public}
-    return {"message": "गुनासो भेटिएन।"}, 404
+
+    data = load_data()
+
+    for complaint in data.get(
+        "complaints",
+        []
+    ):
+
+        if complaint.get("id") == cid:
+
+            public = dict(
+                complaint
+            )
+
+            # Don't expose personal information
+            public.pop(
+                "name",
+                None
+            )
+
+            public.pop(
+                "contact",
+                None
+            )
+
+            public.pop(
+                "email",
+                None
+            )
+
+            return jsonify({
+                "complaint": public
+            })
+
+    return jsonify({
+        "message": "गुनासो भेटिएन।"
+    }), 404
+
+
+# ============================================================
+# UPDATE COMPLAINT
+# ============================================================
 
 @app.patch("/api/complaints/<cid>")
 def update(cid):
+
     if not authorized():
-        return {"message": "अनधिकृत पहुँच।"}, 401
-    body = request.get_json(silent=True) or {}
+
+        return jsonify({
+            "message": "अनधिकृत पहुँच।"
+        }), 401
+
+    body = request.get_json(
+        silent=True
+    ) or {}
+
     data = load_data()
-    for c in data["complaints"]:
-        if c["id"] == cid:
-            if body.get("status"):
-                c["status"] = body["status"]
+
+    for complaint in data.get(
+        "complaints",
+        []
+    ):
+
+        if complaint.get("id") == cid:
+
+            # ------------------------------------------------
+            # Status
+            # ------------------------------------------------
+
+            if "status" in body:
+
+                status = str(
+                    body.get("status", "")
+                ).strip().lower()
+
+                allowed_statuses = {
+                    "opened",
+                    "in_progress",
+                    "closed"
+                }
+
+                if status in allowed_statuses:
+
+                    complaint["status"] = status
+
+            # ------------------------------------------------
+            # Admin note
+            # ------------------------------------------------
+
             if "admin_note" in body:
-                c["admin_note"] = body["admin_note"]
+
+                complaint["admin_note"] = str(
+                    body.get(
+                        "admin_note",
+                        ""
+                    )
+                )
+
             save_data(data)
-            return {"ok": True, "complaint": c}
-    return {"message": "गुनासो भेटिएन।"}, 404
+
+            return jsonify({
+                "ok": True,
+                "complaint": complaint
+            })
+
+    return jsonify({
+        "message": "गुनासो भेटिएन।"
+    }), 404
+
+
+# ============================================================
+# SERVE UPLOADED FILES
+# ============================================================
 
 @app.get("/uploads/<path:name>")
 def uploads(name):
-    return send_from_directory(UPLOADS, name)
+
+    return send_from_directory(
+        UPLOADS,
+        name
+    )
+
+
+# ============================================================
+# OPTIONAL ROOT RESPONSE
+# ============================================================
+
+@app.get("/")
+def root():
+
+    return jsonify({
+        "ok": True,
+        "message": "Jalpa Devi Complaint System API चलिरहेको छ।",
+        "health": "/api/health",
+        "login": "/api/auth/login"
+    })
+
+
+# ============================================================
+# RUN SERVER
+# ============================================================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+
+    app.run(
+        host="0.0.0.0",
+        port=8000,
+        debug=True
+    )
