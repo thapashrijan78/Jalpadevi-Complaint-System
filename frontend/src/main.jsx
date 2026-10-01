@@ -27,14 +27,10 @@ import {
 import "./styles.css";
 import logo from "./assets/school_logo.jpeg";
 
-const API = "/api";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const API = `${API_BASE_URL}/api`;
 const AUTH_KEY = "jalpadevi_admin_session";
 
-const ADMIN_EMAILS = [
-  "karkipadam948@gmail.com",
-  "hemrajpanditjee@gmail.com",
-];
-const ADMIN_PASSWORD = "admin123";
 
 const STATUS = {
   OPENED: "opened",
@@ -231,7 +227,7 @@ function Header({ session, go, logout }) {
           <img src={logo} alt="श्री जाल्पादेवी माध्यमिक विद्यालय लोगो" />
           <span>
             <strong>श्री जाल्पादेवी माध्यमिक विद्यालय</strong>
-            <small>बडीमालिका–१, खेटीपाटल, बाजुरा</small>
+            <small>बडीमालिका–१, खैतिपातल, बाजुरा</small>
           </span>
         </button>
 
@@ -824,8 +820,8 @@ function StatusBadge({ status }) {
 }
 
 function Login({ go, onLogin }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState(ADMIN_PASSWORD);
+  const [loginId, setLoginId] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -839,38 +835,28 @@ function Login({ go, onLogin }) {
     event.preventDefault();
     setError("");
 
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanLoginId = loginId.trim().toLowerCase();
+    const isEmail = isValidEmail(cleanLoginId);
 
-    if (!ADMIN_EMAILS.includes(cleanEmail)) {
-      setError("यो इमेललाई प्रशासनमा लगइन गर्ने अनुमति छैन।");
-      return;
-    }
-
-    if (!isValidEmail(cleanEmail)) {
-      setError("कृपया सही इमेल ठेगाना राख्नुहोस्।");
-      return;
-    }
-
-    if (password !== ADMIN_PASSWORD) {
-      setError("पासवर्ड गलत छ।");
+    if (!isEmail && cleanLoginId !== "admin") {
+      setError("कृपया अधिकृत इमेल वा admin प्रयोगकर्ता नाम राख्नुहोस्।");
       return;
     }
 
     setLoading(true);
 
     try {
-      // The backend should also enforce these exact credentials.
       const data = await apiJson("/auth/login", {
         method: "POST",
         body: JSON.stringify({
-          email: cleanEmail,
-          username: cleanEmail,
+          email: isEmail ? cleanLoginId : "",
+          username: isEmail ? "" : cleanLoginId,
           password,
         }),
       });
 
       const session = {
-        email: cleanEmail,
+        email: isEmail ? cleanLoginId : "admin",
         token: data.token,
         loggedInAt: Date.now(),
       };
@@ -906,17 +892,17 @@ function Login({ go, onLogin }) {
           <div className="login-icon"><ShieldCheck size={25} /></div>
           <div className="eyebrow">प्रशासन लगइन</div>
           <h2>स्वागत छ</h2>
-          <p>आफ्नो अधिकृत इमेल र पासवर्ड प्रयोग गर्नुहोस्।</p>
+          <p>आफ्नो अधिकृत इमेल वा प्रयोगकर्ता नाम र पासवर्ड प्रयोग गर्नुहोस्।</p>
 
           {error && <ErrorBox text={error} />}
 
-          <Field label="इमेल ठेगाना" required>
+          <Field label="इमेल वा प्रयोगकर्ता नाम" required>
             <input
-              type="email"
+              type="text"
               autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@gmail.com"
+              value={loginId}
+              onChange={(e) => setLoginId(e.target.value)}
+              placeholder="name@gmail.com वा admin"
             />
           </Field>
 
@@ -941,7 +927,7 @@ function Login({ go, onLogin }) {
 
           <div className="login-note">
             <LockKeyhole size={15} />
-            <span>केवल अधिकृत प्रशासनिक इमेलबाट लगइन गर्न सकिन्छ।</span>
+            <span>केवल अधिकृत प्रशासनिक विवरणबाट लगइन गर्न सकिन्छ।</span>
           </div>
         </form>
       </section>
@@ -1162,11 +1148,11 @@ function AdminComplaintCard({ item, saving, onStatus, onNote }) {
       {(item.voice_name || item.image_name || item.attachment_name) && (
         <div className="attachments">
           {item.voice_name && (
-            <audio controls src={`/uploads/${item.voice_name}`} />
+        <audio controls src={`${API_BASE_URL}/uploads/${encodeURIComponent(item.voice_name)}`} />
           )}
           {(item.image_name || item.attachment_name) && (
             <a
-              href={`/uploads/${item.image_name || item.attachment_name}`}
+              href={`${API_BASE_URL}/uploads/${encodeURIComponent(item.image_name || item.attachment_name)}`}
               target="_blank"
               rel="noreferrer"
             >
@@ -1258,7 +1244,7 @@ function Footer() {
         <img src={logo} alt="विद्यालय लोगो" />
         <div>
           <b>श्री जाल्पादेवी माध्यमिक विद्यालय</b>
-          <span>बडीमालिका–१, खेटीपाटल, बाजुरा</span>
+          <span>बडीमालिका–१, खैतिपातल, बाजुरा</span>
         </div>
       </div>
       <span>डिजिटल गुनासो व्यवस्थापन प्रणाली</span>

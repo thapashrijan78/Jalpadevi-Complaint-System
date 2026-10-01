@@ -6,6 +6,8 @@ import json
 import uuid
 import base64
 import smtplib
+import os
+import shutil
 from email.message import EmailMessage
 
 # ============================================================
@@ -13,22 +15,26 @@ from email.message import EmailMessage
 # ============================================================
 
 BASE = Path(__file__).resolve().parent
+STORAGE = Path(os.environ.get("STORAGE_DIR", str(BASE))).resolve()
+STORAGE.mkdir(parents=True, exist_ok=True)
 
-DATA = BASE / "data.json"
-UPLOADS = BASE / "uploads"
+DATA = STORAGE / "data.json"
+UPLOADS = STORAGE / "uploads"
 
 UPLOADS.mkdir(exist_ok=True)
 
-# Create data.json if it does not exist
+# Seed persistent storage once with any bundled demo data and uploads.
 if not DATA.exists():
-    DATA.write_text(
-        json.dumps(
-            {"complaints": []},
-            ensure_ascii=False,
-            indent=2
-        ),
-        encoding="utf-8"
-    )
+    bundled_data = BASE / "data.json"
+    if bundled_data.exists():
+        shutil.copy2(bundled_data, DATA)
+    else:
+        DATA.write_text(json.dumps({"complaints": []}, ensure_ascii=False, indent=2), encoding="utf-8")
+    bundled_uploads = BASE / "uploads"
+    if bundled_uploads.exists():
+        for item in bundled_uploads.iterdir():
+            if item.is_file() and not (UPLOADS / item.name).exists():
+                shutil.copy2(item, UPLOADS / item.name)
 
 
 # ============================================================
@@ -36,11 +42,16 @@ if not DATA.exists():
 # ============================================================
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
+allowed_origins = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "*").split(",") if origin.strip()]
 CORS(
     app,
-    resources={r"/api/*": {"origins": "*"}},
-    supports_credentials=False
+    resources={
+        r"/api/*": {"origins": allowed_origins},
+        r"/uploads/*": {"origins": allowed_origins},
+    },
+    supports_credentials=False,
 )
 
 
@@ -48,16 +59,15 @@ CORS(
 # ADMIN CONFIGURATION
 # ============================================================
 
-ADMIN_PASSWORD = "admin123"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
-ADMIN_EMAILS = {
-    "hemrajpanditjee@gmail.com",
-    "karkipadam948@gmail.com",
-}
+ADMIN_EMAILS = set(filter(None, (email.strip().lower() for email in os.environ.get(
+    "ADMIN_EMAILS", "hemrajpanditjee@gmail.com,karkipadam948@gmail.com"
+).split(","))))
 
 # This token is returned after successful login.
 # The frontend uses it for protected admin requests.
-ADMIN_TOKEN = "jalpa-demo-admin-token"
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "jalpa-demo-admin-token")
 
 
 # ============================================================
