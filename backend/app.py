@@ -15,6 +15,7 @@ from email.message import EmailMessage
 # ============================================================
 
 BASE = Path(__file__).resolve().parent
+FRONTEND_DIST = BASE.parent / "frontend" / "dist"
 STORAGE = Path(os.environ.get("STORAGE_DIR", str(BASE))).resolve()
 STORAGE.mkdir(parents=True, exist_ok=True)
 
@@ -41,7 +42,11 @@ if not DATA.exists():
 # FLASK APP
 # ============================================================
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    static_folder=str(FRONTEND_DIST / "assets"),
+    static_url_path="/assets",
+)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
 allowed_origins = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "*").split(",") if origin.strip()]
@@ -687,6 +692,9 @@ def uploads(name):
 @app.get("/")
 def root():
 
+    if (FRONTEND_DIST / "index.html").is_file():
+        return send_from_directory(FRONTEND_DIST, "index.html")
+
     return jsonify({
         "ok": True,
         "message": "Jalpa Devi Complaint System API चलिरहेको छ।",
@@ -704,5 +712,6 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=8000,
-        debug=True
+        debug=os.environ.get("FLASK_DEBUG", "1") == "1",
+        use_reloader=False,
     )

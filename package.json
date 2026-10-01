@@ -1,0 +1,10 @@
+{
+  "name": "jalpadevi-complaint-system",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "npm ci --prefix frontend",
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build --prefix frontend"
+  }
+}
