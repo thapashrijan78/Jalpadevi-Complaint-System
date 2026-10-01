@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 from pathlib import Path
 from datetime import datetime, timezone
@@ -8,27 +8,29 @@ import base64
 import smtplib
 import os
 import shutil
+import mimetypes
 from email.message import EmailMessage
+from vercel.blob import get as blob_get, list_objects as blob_list, put as blob_put
 
 # ============================================================
 # PATHS
 # ============================================================
 
 BASE = Path(__file__).resolve().parent
-# PythonAnywhere installs the committed production build under backend/static.
-# Local/other deployments can continue to use frontend/dist.
 STATIC_BUILD = BASE / "static"
 FRONTEND_DIST = STATIC_BUILD if (STATIC_BUILD / "index.html").is_file() else BASE.parent / "frontend" / "dist"
+USE_VERCEL_BLOB = os.environ.get("VERCEL") == "1"
 STORAGE = Path(os.environ.get("STORAGE_DIR", str(BASE))).resolve()
-STORAGE.mkdir(parents=True, exist_ok=True)
 
 DATA = STORAGE / "data.json"
 UPLOADS = STORAGE / "uploads"
 
-UPLOADS.mkdir(exist_ok=True)
+if not USE_VERCEL_BLOB:
+    STORAGE.mkdir(parents=True, exist_ok=True)
+    UPLOADS.mkdir(exist_ok=True)
 
 # Seed persistent storage once with any bundled demo data and uploads.
-if not DATA.exists():
+if not USE_VERCEL_BLOB and not DATA.exists():
     bundled_data = BASE / "data.json"
     if bundled_data.exists():
         shutil.copy2(bundled_data, DATA)
@@ -52,16 +54,14 @@ app = Flask(
 )
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
-allowed_origins = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "*").split(",") if origin.strip()]
+allowed_origins = [origin.strip() for origin in os.environ.get(
+    "CORS_ORIGINS", "https://jalpadevi-gunasho.vercel.app"
+).split(",") if origin.strip()]
 CORS(
     app,
-    resources={
-        r"/api/*": {"origins": allowed_origins},
-        r"/uploads/*": {"origins": allowed_origins},
-    },
+    resources={r"/api/*": {"origins": allowed_origins}},
     supports_credentials=False,
 )
-
 
 # ============================================================
 # ADMIN CONFIGURATION
@@ -77,27 +77,27 @@ ADMIN_EMAILS = set(filter(None, (email.strip().lower() for email in os.environ.g
 # The frontend uses it for protected admin requests.
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "jalpa-demo-admin-token")
 
+if USE_VERCEL_BLOB and (ADMIN_PASSWORD == "admin123" or ADMIN_TOKEN == "jalpa-demo-admin-token"):
+    raise RuntimeError("Set unique ADMIN_PASSWORD and ADMIN_TOKEN environment variables before deploying.")
+
 
 # ============================================================
 # EMAIL CONFIGURATION
 # ============================================================
 
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 
 # IMPORTANT:
 # Replace these with your actual Gmail address and Gmail App Password.
 #
 # Do NOT commit a real password/App Password to GitHub.
 #
-SENDER_EMAIL = "example@gmail.com"
-SENDER_PASSWORD = "xxxx xxxx xxxx xxxx"
+SENDER_EMAIL = os.environ.get("SMTP_USER", "")
+SENDER_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 
 # Emails that receive new complaint notifications
-NOTIFICATION_EMAILS = [
-    "hemrajpanditjee@gmail.com",
-    "karkipadam948@gmail.com",
-]
+NOTIFICATION_EMAILS = sorted(ADMIN_EMAILS)
 
 
 # ============================================================
@@ -105,6 +105,20 @@ NOTIFICATION_EMAILS = [
 # ============================================================
 
 def load_data():
+    if USE_VERCEL_BLOB:
+        complaints = []
+        cursor = None
+        while True:
+            page = blob_list(prefix="complaints/", cursor=cursor, limit=1000)
+            for item in page.blobs:
+                result = blob_get(item.pathname, access="private")
+                complaints.append(json.loads(result.content.decode("utf-8")))
+            if not page.has_more:
+                break
+            cursor = page.cursor
+        complaints.sort(key=lambda complaint: complaint.get("created_at", ""), reverse=True)
+        return {"complaints": complaints}
+
     try:
         return json.loads(
             DATA.read_text(encoding="utf-8")
@@ -114,6 +128,10 @@ def load_data():
 
 
 def save_data(data):
+    if USE_VERCEL_BLOB:
+        for complaint in data.get("complaints", []):
+            save_complaint(complaint)
+        return
     DATA.write_text(
         json.dumps(
             data,
@@ -122,6 +140,41 @@ def save_data(data):
         ),
         encoding="utf-8"
     )
+
+
+def save_complaint(complaint):
+    if USE_VERCEL_BLOB:
+        blob_put(
+            f"complaints/{complaint['id']}.json",
+            json.dumps(complaint, ensure_ascii=False).encode("utf-8"),
+            access="private",
+            content_type="application/json; charset=utf-8",
+            overwrite=True,
+        )
+        return
+
+    data = load_data()
+    complaints = data.setdefault("complaints", [])
+    for index, existing in enumerate(complaints):
+        if existing.get("id") == complaint.get("id"):
+            complaints[index] = complaint
+            break
+    else:
+        complaints.insert(0, complaint)
+    save_data(data)
+
+
+def save_upload(filename, content, content_type="application/octet-stream"):
+    if USE_VERCEL_BLOB:
+        blob_put(
+            f"uploads/{filename}",
+            content,
+            access="private",
+            content_type=content_type,
+            overwrite=False,
+        )
+    else:
+        (UPLOADS / filename).write_bytes(content)
 
 
 # ============================================================
@@ -447,9 +500,8 @@ def create_complaint():
                     f"{cid}-file{ext}"
                 )
 
-                path = UPLOADS / filename
-
-                path.write_bytes(raw)
+                content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+                save_upload(filename, raw, content_type)
 
                 complaint["image_name"] = filename
 
@@ -487,9 +539,7 @@ def create_complaint():
                     f"{cid}-voice.webm"
                 )
 
-                path = UPLOADS / filename
-
-                path.write_bytes(raw)
+                save_upload(filename, raw, "audio/webm")
 
                 complaint["voice_name"] = filename
 
@@ -504,17 +554,7 @@ def create_complaint():
     # SAVE COMPLAINT
     # ========================================================
 
-    data = load_data()
-
-    if "complaints" not in data:
-        data["complaints"] = []
-
-    data["complaints"].insert(
-        0,
-        complaint
-    )
-
-    save_data(data)
+    save_complaint(complaint)
 
 
     # ========================================================
@@ -663,7 +703,7 @@ def update(cid):
                     )
                 )
 
-            save_data(data)
+            save_complaint(complaint)
 
             return jsonify({
                 "ok": True,
@@ -679,13 +719,26 @@ def update(cid):
 # SERVE UPLOADED FILES
 # ============================================================
 
-@app.get("/uploads/<path:name>")
+@app.get("/api/uploads/<path:name>")
 def uploads(name):
+    if not authorized():
+        return jsonify({"message": "अनधिकृत पहुँच।"}), 401
 
-    return send_from_directory(
-        UPLOADS,
-        name
-    )
+    if Path(name).name != name:
+        return jsonify({"message": "फाइल भेटिएन।"}), 404
+
+    if USE_VERCEL_BLOB:
+        try:
+            blob = blob_get(f"uploads/{name}", access="private")
+            return Response(
+                blob.content,
+                mimetype=blob.content_type or "application/octet-stream",
+                headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
+            )
+        except Exception:
+            return jsonify({"message": "फाइल भेटिएन।"}), 404
+
+    return send_from_directory(UPLOADS, name, as_attachment=False)
 
 
 # ============================================================

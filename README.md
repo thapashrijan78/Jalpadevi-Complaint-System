@@ -1,70 +1,55 @@
 # श्री जाल्पादेवी माध्यमिक विद्यालय — गुनासो दर्ता प्रणाली
 
-यो नेपाली विद्यालय/स्थानीय समुदायका लागि मोबाइल र कम्प्युटर दुवैमा चल्ने गुनासो पोर्टल हो। React/Vite frontend र Flask API एउटै project र एउटै production service बाट चल्छन्।
+नेपाली विद्यालय तथा स्थानीय समुदायका लागि React/Vite frontend र Flask API भएको गुनासो पोर्टल। दुवै Vercel मा deploy हुन्छन्। गुनासो विवरण र संलग्न फाइलहरू private Vercel Blob storage मा रहन्छन्।
 
-## मुख्य सुविधाहरू
+## सुविधाहरू
 
-- पूर्ण नेपाली UI र responsive design
-- विद्यार्थी, शिक्षक र अभिभावकका लागि गुनासो दर्ता
-- व्यक्तिगत विवरणसहित वा गोप्य/अनामिक रूपमा गुनासो
-- विषय, शीर्षक, विवरण र स्थान
-- मोबाइल/ल्यापटपबाट आवाज रेकर्ड
-- JPG/JPEG/PNG/PDF फाइल संलग्न
-- गुनासो दर्ता भएपछि Tracking ID र सार्वजनिक अवस्था जाँच
-- अध्यक्ष/प्रशासनका लागि login र dashboard
-- QR code generator
+- मोबाइल र कम्प्युटरका लागि नेपाली interface
+- विद्यार्थी, शिक्षक र अभिभावकका गुनासो
+- व्यक्तिगत विवरणसहित वा अनामिक रूपमा दर्ता
+- फोटो/PDF र आवाज संलग्न
+- Tracking ID बाट सार्वजनिक अवस्था जाँच
+- प्रशासन login, dashboard र QR code
 
 ## स्थानीय रूपमा चलाउने
 
-पहिलो पटक repository को मुख्य folder मा:
+Repository को मुख्य folder मा:
 
 ```bash
 npm install
 npm run dev
 ```
 
-`npm run dev` ले frontend र backend दुवै सुरु गर्छ। पहिलो पटक backend को Python virtual environment बनाउँछ र `backend/requirements.txt` का packages स्थापना गर्छ। Python 3 र Node.js चाहिन्छ। Browser मा Vite ले देखाएको URL खोल्नुहोस्, सामान्यतया `http://127.0.0.1:5173`। रोक्न `Ctrl+C` थिच्नुहोस्।
-
-स्थानीय demo administrator:
+पहिलो पटक Python 3 र Node.js चाहिन्छ। `npm run dev` ले Flask API र Vite frontend दुवै सुरु गर्छ। स्थानीय demo administrator:
 
 - Username: `admin`
 - Password: `admin123`
 
-## एउटै, निःशुल्क hosting विकल्प
+## एउटै Vercel project मा deploy
 
-Frontend र Flask API एउटै Flask web app बाट चलाउन PythonAnywhere को free account प्रयोग गर्न सकिन्छ। यो सेटअपमा अलग frontend/backend deploy हुँदैन। PythonAnywhere का free accounts मा storage सीमित हुन्छ र नयाँ account को site एक महिनापछि expire हुन सक्छ। त्यसैले यसलाई demo वा परीक्षणका लागि मात्र लिनुहोस्, स्थायी production hosting भनेर नमान्नुहोस्। Signup गर्दा dashboard मा देखिने हालका limits जाँच्नुहोस्।
+`vercel.json` ले एउटै Vercel project `jalpadevi-gunasho` मा frontend र Flask API लाई Vercel Services का रूपमा चलाउँछ। `/api/*` अनुरोध backend मा र अरू पृष्ठ frontend मा जान्छन्। Project को Root Directory repository को मुख्य folder हुनुपर्छ र Framework Preset `Services` हुनुपर्छ। Frontend र API एउटै domain (`https://jalpadevi-gunasho.vercel.app`) प्रयोग गर्छन्।
 
-### PythonAnywhere सेटअप
+Project मा private Vercel Blob store जोडेर `BLOB_READ_WRITE_TOKEN` उपलब्ध गराउनुहोस्। Production, Preview र Development environment मा यी variables राख्नुहोस्:
 
-1. PythonAnywhere मा free account बनाएर **Consoles → Bash** खोल्नुहोस्.
-2. Repository clone गरेर project folder भित्र जानुहोस्:
+- `ADMIN_PASSWORD`: बलियो, अद्वितीय प्रशासन पासवर्ड
+- `ADMIN_TOKEN`: लामो, random secret token
+- `ADMIN_EMAILS`: login गर्न पाउने email हरू comma ले छुट्याएर
+- `BLOB_READ_WRITE_TOKEN`: private Blob store को read/write token
+- `SMTP_USER`, `SMTP_PASSWORD`: email सूचना चाहिँदा मात्रै
 
-   ```bash
-   git clone https://github.com/thapashrijan78/Jalpadevi-Complaint-System.git
-   cd Jalpadevi-Complaint-System
-   ```
+`ADMIN_PASSWORD`, `ADMIN_TOKEN` वा Blob token लाई Git मा नराख्नुहोस्। Production portal सार्वजनिक हुन Vercel Deployment Protection को SSO बन्द हुनुपर्छ। Repository को मुख्य folder बाट deploy गर्न:
 
-3. Frontend production files बनाउनुहोस्:
+```bash
+vercel --prod
+```
 
-   ```bash
-   npm install
-   npm run build:pythonanywhere
-   ```
+Vercel Function को ४.५ MB request सीमा भएकाले गुनासो फारमले फोटो/PDF र आवाजको जम्मा आकार ३ MB सम्म स्वीकार गर्छ। फाइलहरू private राखिएका छन् र डाउनलोड गर्न प्रशासन login आवश्यक हुन्छ।
 
-4. **Web → Add a new web app** बाट आफ्नो free `pythonanywhere.com` subdomain बनाउनुहोस् र उपलब्ध Python version छान्नुहोस्.
-5. Virtualenv बनाउनुहोस् र backend packages राख्नुहोस्. PythonAnywhere ले उपलब्ध गराएको Python version अनुसार path बदल्नुहोस्:
+## Data
 
-   ```bash
-   mkvirtualenv --python=/usr/bin/python3.11 jalpa-venv
-   pip install -r ~/Jalpadevi-Complaint-System/backend/requirements.txt
-   ```
+Complaint records र attachments private Vercel Blob storage मा राखिन्छन्। Vercel Functions को स्थानीय filesystem स्थायी हुँदैन, त्यसैले production data त्यहाँ लेखिँदैन।
 
-6. Web page मा virtualenv path सेट गर्नुहोस्. WSGI configuration file मा यस repository को `deploy/pythonanywhere_wsgi.py` का contents राखेर `YOUR_PYTHONANYWHERE_USERNAME` बदल्नुहोस्. त्यही dashboard-only file मा admin password र token लाई निजी, random values ले बदल्नुहोस्; GitHub मा नराख्नुहोस्.
-7. **Reload** थिच्नुहोस् र `https://YOUR_USERNAME.pythonanywhere.com/api/health` खोल्नुहोस्. `ok: true` आएपछि frontend र API दुवै एउटै site मा चल्छन्.
-
-Complaint data र uploads free account को सीमित filesystem मा रहन्छन्. Free service expire हुन सक्छ, त्यसैले वास्तविक विद्यालय प्रयोगका लागि नियमित backup राख्नुहोस्. कुनै paid plan नछान्नुहोस्.
-
-Local development मा Vite proxy ले API लाई Flask मा पठाउँछ.
+Repository को पुरानो demo `backend/data.json` र `backend/uploads` मा व्यक्तिगत विवरण/आवाज भएकाले deployment बाट बाहिर राखिन्छन् र Git मा अब commit हुँदैनन्। नयाँ production Blob store मा ती records copy हुँदैनन्।
 
 ## Pages
 
@@ -74,9 +59,3 @@ Local development मा Vite proxy ले API लाई Flask मा पठा�
 - QR code: `#qr`
 - प्रशासन login: `#login`
 - प्रशासन dashboard: `#dashboard`
-
-## Storage
-
-PythonAnywhere free account मा JSON data र uploads app को filesystem मा रहन्छन्. Free storage सीमित छ; आवश्यक data को backup अलग राख्नुहोस्.
-
-यो prototype ले JSON file मा data राख्छ। धेरै प्रयोगकर्ता वा विद्यालयको औपचारिक production प्रयोगका लागि PostgreSQL, password hashing, rate limiting, backups र notification configuration थप्नु उपयुक्त हुन्छ।

@@ -10,6 +10,10 @@ env/
 node_modules/
 dist/
 .vite/
+.vercel/
+public/
+backend/data.json
+backend/uploads/
 
 # Database & Uploads (Optional - uncomment if you don't want to upload user data)
 # backend/data.json
@@ -19,3 +23,4 @@ dist/
 .DS_Store
 Thumbs.db
 .vercel
+.env*

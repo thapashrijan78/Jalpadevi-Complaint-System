@@ -30,6 +30,7 @@ import logo from "./assets/school_logo.jpeg";
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const API = `${API_BASE_URL}/api`;
 const AUTH_KEY = "jalpadevi_admin_session";
+const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
 
 
 const STATUS = {
@@ -424,6 +425,12 @@ function Complaint({ go }) {
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunks, { type: "audio/webm" });
+        if (blob.size > MAX_UPLOAD_BYTES) {
+          setVoiceBlob(null);
+          setError("आवाजको फाइल ३ MB भन्दा सानो बनाउनुहोस्।");
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         setVoiceBlob(blob);
         setVoiceUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((track) => track.stop());
@@ -462,8 +469,9 @@ function Complaint({ go }) {
       }
     }
 
-    if (attachment && attachment.size > 10 * 1024 * 1024) {
-      return setError("संलग्न फाइल १० MB भन्दा ठूलो हुनुहुँदैन।");
+    const uploadBytes = (attachment?.size || 0) + (voiceBlob?.size || 0);
+    if (uploadBytes > MAX_UPLOAD_BYTES) {
+      return setError("संलग्न फाइल र आवाजको जम्मा आकार ३ MB भन्दा कम हुनुपर्छ।");
     }
 
     setSending(true);
@@ -608,7 +616,7 @@ function Complaint({ go }) {
           </div>
 
           <div className="media-box">
-            <div className="media-title"><Paperclip size={19} /><div><b>फोटो / कागजात</b><small>JPG, PNG वा PDF · अधिकतम १० MB</small></div></div>
+            <div className="media-title"><Paperclip size={19} /><div><b>फोटो / कागजात</b><small>JPG, PNG वा PDF · आवाजसहित जम्मा ३ MB सम्म</small></div></div>
             <label className="file-picker">
               <Paperclip size={17} />
               <span>{attachment ? attachment.name : "फाइल छान्नुहोस्"}</span>
@@ -1117,6 +1125,39 @@ function StatCard({ label, value, icon }) {
 
 function AdminComplaintCard({ item, saving, onStatus, onNote }) {
   const [note, setNote] = useState(item.admin_note || "");
+  const [fileUrls, setFileUrls] = useState({});
+
+  useEffect(() => {
+    let active = true;
+    const urls = [];
+    const files = {
+      voice: item.voice_name,
+      attachment: item.image_name || item.attachment_name,
+    };
+
+    Promise.all(Object.entries(files).map(async ([key, filename]) => {
+      if (!filename) return [key, ""];
+      try {
+        const response = await fetch(`${API}/uploads/${encodeURIComponent(filename)}`, {
+          headers: authHeaders(),
+        });
+        if (!response.ok) return [key, ""];
+        const url = URL.createObjectURL(await response.blob());
+        if (active) urls.push(url);
+        else URL.revokeObjectURL(url);
+        return [key, url];
+      } catch {
+        return [key, ""];
+      }
+    })).then((entries) => {
+      if (active) setFileUrls(Object.fromEntries(entries));
+    });
+
+    return () => {
+      active = false;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [item.voice_name, item.image_name, item.attachment_name]);
 
   return (
     <article className="admin-complaint-card">
@@ -1147,12 +1188,12 @@ function AdminComplaintCard({ item, saving, onStatus, onNote }) {
 
       {(item.voice_name || item.image_name || item.attachment_name) && (
         <div className="attachments">
-          {item.voice_name && (
-        <audio controls src={`${API_BASE_URL}/uploads/${encodeURIComponent(item.voice_name)}`} />
+          {item.voice_name && fileUrls.voice && (
+            <audio controls src={fileUrls.voice} />
           )}
-          {(item.image_name || item.attachment_name) && (
+          {(item.image_name || item.attachment_name) && fileUrls.attachment && (
             <a
-              href={`${API_BASE_URL}/uploads/${encodeURIComponent(item.image_name || item.attachment_name)}`}
+              href={fileUrls.attachment}
               target="_blank"
               rel="noreferrer"
             >

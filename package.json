@@ -5,7 +5,6 @@
   "scripts": {
     "postinstall": "npm ci --prefix frontend",
     "dev": "node scripts/dev.mjs",
-    "build": "npm run build --prefix frontend",
-    "build:pythonanywhere": "npm run build && node scripts/copy-production-build.mjs"
+    "build": "npm run build --prefix frontend"
   }
 }
